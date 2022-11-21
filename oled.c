@@ -14,7 +14,7 @@
 //Init commands table
 //
 uint8_t InitCommands[] = {
-	0xAE,
+	0xAE,			//
 	//0x20, 0b00,
 	//0xB0,
 	0xC8,		//common pins scan direction (page (y) addressing starting from bottom or from top)
@@ -26,7 +26,7 @@ uint8_t InitCommands[] = {
 	//0xA6,
 	0xA8, 63,	//multiplex ratio (display height)
 	//0xA4,
-	0xD3,0x01,	//offset, has to be 0x01 for my display
+	0xD3,0x10,	//offset, has to be 0x01 for my display
 	//0xD5,
 	//0xF0,
 	//0xD9,0x22,
