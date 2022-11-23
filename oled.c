@@ -5,39 +5,36 @@
  *      Author: miqix
  */
 #include <avr/io.h>
+#include <stdlib.h>
+#include <string.h>
+#include <avr/pgmspace.h>
 #include "oled.h"
 #include "oled_defs.h"
+#include "oled_fonts.h"
 #include "I2C/TWI.h"
+
+#include "UART/uart.h"
+
+
+const uint8_t *ActualFont = StandardASCII;
 
 
 //
 //Init commands table
 //
 uint8_t InitCommands[] = {
-	0xAE,			//
-	//0x20, 0b00,
-	//0xB0,
-	0xC8,		//common pins scan direction (page (y) addressing starting from bottom or from top)
-	0x00,
-	0x10,
-	//0x40,
-	0x81,0x3F,
-	0xA1,		//segment re-map (segment (x) addressing starting from bottom or from top)
-	//0xA6,
-	0xA8, 63,	//multiplex ratio (display height)
-	//0xA4,
-	0xD3,0x10,	//offset, has to be 0x01 for my display
-	//0xD5,
-	//0xF0,
-	//0xD9,0x22,
-	//0xDA,0x12,
-	0xDB,0x20,
-	//0x8D,0x14, //dc - dc??
-	0xAD,0x8B,		//dc-dc 8A - disabled 8B - enabled
-	0xAF
+	DISPLAY_OFF,
+	SET_COMM_SCAN_FBOT,
+	SET_COLLUMN_ADDR_L,
+	SET_COLLUMN_ADDR_H,
+	SET_CONTRAST,0x3F,
+	SET_SEGMENT_REMAP,
+	SET_MULTIPLEX_RATIO, 63,
+	SET_OFFSET,1,
+	SET_VCOM,0x20,
+	SET_DCDC,0x8B,
+	DISPLAY_ON
 };
-
-
 
 
 //
@@ -63,20 +60,22 @@ void OLED_Send2ByteCmd(uint8_t command, uint8_t value)
 	I2C_stop();
 }
 
-void OLED_SendData(uint8_t* Data, uint8_t length)
+void OLED_SendData(uint8_t *Data, uint8_t length)
 {
 	uint8_t i;
 	I2C_start();
 	I2C_write(OLED_ADDR);
-	I2C_write(0x40); //control byte
+	I2C_write(SEND_DATA); //control byte
 
 	for(i = 0; i < length; i++)
 	{
-		I2C_write(*(Data++));
+		I2C_write(*Data);
+		Data++;
 	}
 	I2C_stop();
 
 }
+
 void OLED_Init()
 {
 	uint8_t i;
@@ -91,6 +90,64 @@ void OLED_Init()
 	I2C_stop();
 }
 
+//
+//End of Basic Communication functions
+//
+
+void OLED_GoToCollumn(uint8_t CollumnNumber)
+{
+	CollumnNumber+=COLLUMN_CENTER_OFFSET;
+	if(CollumnNumber > DISPLAY_WIDTH + COLLUMN_CENTER_OFFSET) return;
+	OLED_SendCmd(SET_COLLUMN_ADDR_L | (CollumnNumber & 0x0F) ); 			//Set lower column address (4 lower bits 0b0000xxxx)
+	OLED_SendCmd(SET_COLLUMN_ADDR_H | (CollumnNumber >> 4) ); 				//Set higher column address	(4 higher bits + 0x10 identifier 0b0001xxxx)
+}
+
+void OLED_MoveCursor(uint8_t collumn, uint8_t page)
+{
+	OLED_GoToCollumn(collumn);
+	OLED_SendCmd(SET_PAGE | (page & 0x07) );		//0x07 mask to prevent numbers > 7
+}
+
+void OLED_ClearDisp(void)
+{
+	uint8_t ZerosBuff[DISPLAY_WIDTH];
+	uint8_t i;
+
+	memset(&ZerosBuff, 0x00, sizeof(ZerosBuff));		//prepare zeros for clearing each page
+	for(i = 0; i < DISPLAY_HEIGHT/8; i++)				//clear each page by sending zeros
+	{
+		OLED_MoveCursor(0,i);
+		OLED_SendData(&ZerosBuff[0],sizeof(ZerosBuff));
+	}
+}
+
+//
+//Functions for text writing - no buffer
+//
+
+void OLED_ChangeFont(uint8_t *Font)
+{
+	ActualFont = Font;
+}
+
+void OLED_WriteChar(char character)
+{
+	uint8_t i;
+	uint8_t BytesToSend [MAX_FONT_WIDTH];
+	uint8_t CharWidth = pgm_read_byte(ActualFont + 1);                             //read width of characters in current font
+	//uint8_t CharHeight = *(ActualFont + 2);
+	char *CharPointer = (char*)(ActualFont + 3);						           //read from font table, which char is first
+	char CharTableNumber = (character - pgm_read_byte(CharPointer) ) * CharWidth;  //calculate character position in font table
+	CharPointer+= (CharTableNumber) + 1;                                           //Increase pointer to this data
+
+	for(i = 0; i < CharWidth; i++)                                                 //copy character from flash to buffer
+	{
+		BytesToSend[i] = pgm_read_byte(CharPointer);
+		CharPointer++;
+	}
+	OLED_SendData(BytesToSend,CharWidth);                                          //print it
+}
+
 
 void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color)
 {
@@ -99,10 +156,36 @@ void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color)
 	{
 		return;
 	}
-	uint8_t PixelNumber = ( color << (y % 8) );	//Pixel number in 1 byte organized VRAM memory
+	uint8_t PixelNumber = ( color << (y % 8) );					//Pixel number in 1 byte organized VRAM memory
 
-	OLED_SendCmd( SET_PAGE | (y/8) );	//Set page address, each page has 8 pixels
-	OLED_SendCmd( x & 0x0F ); 			//Set lower column address (4 lower bits 0b0000xxxx)
-	OLED_SendCmd( (x >> 4) | 0x10 ); 	//Set higher column address	(4 higher bits + 0x10 identifier 0b0001xxxx)
+	OLED_SendCmd( SET_PAGE | (y/8) );							//Set page address, each page has 8 pixels
+	OLED_GoToCollumn(x);
 	OLED_SendData(&PixelNumber,1);
+}
+
+void OLED_DrawLine(uint8_t startX, uint8_t startY, uint8_t lenght)
+{
+	startX += COLLUMN_CENTER_OFFSET;
+	if(startX > 131 - COLLUMN_CENTER_OFFSET || startX < COLLUMN_CENTER_OFFSET || startY > DISPLAY_HEIGHT)
+	{
+		return;
+	}
+
+}
+
+void OLED_DrawLine1(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t color){
+
+
+    int dx =  abs(x2-x1), sx = x1<x2 ? 1 : -1;
+    int dy = -abs(y2-y1), sy = y1<y2 ? 1 : -1;
+    int err = dx+dy, e2; /* error value e_xy */
+
+    while(1){
+        OLED_DrawPixel(x1, y1, color);
+        if (x1==x2 && y1==y2) break;
+        e2 = 2*err;
+        if (e2 > dy) { err += dy; x1 += sx; } /* e_xy+e_x > 0 */
+        if (e2 < dx) { err += dx; y1 += sy; } /* e_xy+e_y < 0 */
+    }
+
 }
