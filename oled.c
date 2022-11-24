@@ -17,12 +17,13 @@
 
 
 const uint8_t *ActualFont = StandardASCII;
+CursorPosition Cursor;
 
 
 //
 //Init commands table
 //
-uint8_t InitCommands[] = {
+const uint8_t InitCommands[] = {
 	DISPLAY_OFF,
 	SET_COMM_SCAN_FBOT,
 	SET_COLLUMN_ADDR_L,
@@ -35,6 +36,11 @@ uint8_t InitCommands[] = {
 	SET_DCDC,0x8B,
 	DISPLAY_ON
 };
+
+FontInfo CurrentFont;
+
+
+
 
 
 //
@@ -88,6 +94,7 @@ void OLED_Init()
 		I2C_write(InitCommands[i]);
 	}
 	I2C_stop();
+	OLED_ChangeFont(StandardASCII);
 }
 
 //
@@ -106,6 +113,8 @@ void OLED_MoveCursor(uint8_t collumn, uint8_t page)
 {
 	OLED_GoToCollumn(collumn);
 	OLED_SendCmd(SET_PAGE | (page & 0x07) );		//0x07 mask to prevent numbers > 7
+	Cursor.collumn = collumn;
+	Cursor.page = page;
 }
 
 void OLED_ClearDisp(void)
@@ -125,27 +134,41 @@ void OLED_ClearDisp(void)
 //Functions for text writing - no buffer
 //
 
-void OLED_ChangeFont(uint8_t *Font)
+void OLED_ChangeFont(const uint8_t *Font)
 {
-	ActualFont = Font;
+	CurrentFont.FontPointer = Font;
+	CurrentFont.FontWidth = pgm_read_byte(Font + 1);
+	CurrentFont.FontHeight = pgm_read_byte(Font + 2);
+	CurrentFont.FirstChar = pgm_read_byte(Font + 3);
 }
 
 void OLED_WriteChar(char character)
 {
-	uint8_t i;
-	uint8_t BytesToSend [MAX_FONT_WIDTH];
-	uint8_t CharWidth = pgm_read_byte(ActualFont + 1);                             //read width of characters in current font
-	//uint8_t CharHeight = *(ActualFont + 2);
-	char *CharPointer = (char*)(ActualFont + 3);						           //read from font table, which char is first
-	char CharTableNumber = (character - pgm_read_byte(CharPointer) ) * CharWidth;  //calculate character position in font table
-	CharPointer+= (CharTableNumber) + 1;                                           //Increase pointer to this data
-
-	for(i = 0; i < CharWidth; i++)                                                 //copy character from flash to buffer
+	switch(character)
 	{
-		BytesToSend[i] = pgm_read_byte(CharPointer);
-		CharPointer++;
+	case '\r':	//carriage return
+		OLED_MoveCursor(0, Cursor.page);
+		break;
+
+	case '\n':	//linefeed, next line
+		OLED_MoveCursor(Cursor.collumn, Cursor.page + 1);
+		break;
+
+	default: ;	//any other characters
+		uint8_t i;
+		uint8_t BytesToSend [MAX_FONT_WIDTH];
+		uint16_t CharTableNumber = (character - CurrentFont.FirstChar ) * CurrentFont.FontWidth;  //calculate character position in font table
+		uint8_t *CharPointer = (uint8_t*)(CurrentFont.FontPointer + 4) + CharTableNumber;         //Increase pointer to this data
+
+		for(i = 0; i < CurrentFont.FontWidth; i++)                                                //copy character from flash to buffer
+		{
+			BytesToSend[i] = pgm_read_byte(CharPointer);
+			CharPointer++;
+		}
+		OLED_SendData(BytesToSend,CurrentFont.FontWidth);                                         //print it
+		Cursor.collumn += CurrentFont.FontWidth;
+		break;
 	}
-	OLED_SendData(BytesToSend,CharWidth);                                          //print it
 }
 
 

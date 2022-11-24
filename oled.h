@@ -14,6 +14,13 @@ typedef struct{
 	uint8_t page;		// Y/8
 }CursorPosition;
 
+typedef struct{
+	const uint8_t *FontPointer;
+	uint8_t FirstChar;
+	uint8_t FontWidth;
+	uint8_t FontHeight;
+}FontInfo;
+
 
 void OLED_SendCmd(uint8_t command);
 void OLED_Send2ByteCmd(uint8_t command, uint8_t value);
@@ -25,6 +32,7 @@ void OLED_ClearDisp(void);
 void OLED_WriteChar(char character);
 void OLED_MoveCursor(uint8_t collumn, uint8_t page);
 void OLED_DrawLine1(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t color);
+void OLED_ChangeFont(const uint8_t *Font);
 
 
 
