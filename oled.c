@@ -138,6 +138,7 @@ void OLED_ClearDisp(void)
 		OLED_MoveCursor(0,i);
 		OLED_SendData(&ZerosBuff[0],sizeof(ZerosBuff));
 	}
+	OLED_MoveCursor(0,0);
 }
 
 //
