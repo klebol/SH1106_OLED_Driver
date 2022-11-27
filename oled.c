@@ -5,6 +5,7 @@
  *      Author: miqix
  */
 #include <avr/io.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <avr/pgmspace.h>
@@ -16,8 +17,13 @@
 #include "UART/uart.h"
 
 
+//
+//Global variables
+//
+static CursorPosition Cursor;
+static FontInfo CurrentFont;
 const uint8_t *ActualFont = StandardASCII;
-CursorPosition Cursor;
+
 
 
 //
@@ -36,12 +42,6 @@ const uint8_t InitCommands[] PROGMEM = {
 	SET_DCDC,0x8B,
 	DISPLAY_ON
 };
-
-FontInfo CurrentFont;
-
-
-
-
 
 //
 //Basic Communication functions
@@ -85,22 +85,11 @@ void OLED_SendData(uint8_t *Data, uint8_t length)
 	I2C_stop();
 
 }
-/*
-void OLED_Init()
-{
-	uint8_t i;
-	uint8_t CommandsSize = sizeof(InitCommands);
-	I2C_start();
-	I2C_write(OLED_ADDR);
-	I2C_write(SEND_COMMAND);
-	for(i = 0; i < CommandsSize ; i++)
-	{
-		I2C_write(InitCommands[i]);
-	}
-	I2C_stop();
-	OLED_ChangeFont(StandardASCII);
-}
-*/
+
+//
+//End of Basic Communication functions
+//
+
 
 void OLED_Init()
 {
@@ -115,9 +104,6 @@ void OLED_Init()
 	OLED_ChangeFont(StandardASCII);
 }
 
-//
-//End of Basic Communication functions
-//
 
 void OLED_GoToCollumn(uint8_t CollumnNumber)
 {
@@ -133,6 +119,12 @@ void OLED_MoveCursor(uint8_t collumn, uint8_t page)
 	OLED_SendCmd(SET_PAGE | (page & 0x07) );		//0x07 mask to prevent numbers > 7
 	Cursor.collumn = collumn;
 	Cursor.page = page;
+}
+
+void OLED_GetCursorPosition(CursorPosition *OutputPosition)
+{
+	OutputPosition->collumn = Cursor.collumn;
+	OutputPosition->page = Cursor.page;
 }
 
 void OLED_ClearDisp(void)
@@ -160,7 +152,7 @@ void OLED_ChangeFont(const uint8_t *Font)
 	CurrentFont.FirstChar = pgm_read_byte(Font + 3);
 }
 
-void OLED_WriteChar(char character)
+void OLED_WriteC(char character)
 {
 	switch(character)
 	{
@@ -191,6 +183,22 @@ void OLED_WriteChar(char character)
 		}
 		break;
 	}
+}
+
+void OLED_WriteS(char *String)
+{
+	while(*String)
+	{
+		OLED_WriteC(*String);
+		String++;
+	}
+}
+
+void OLED_WriteI(int Value)
+{
+	char Buffer[5];
+	sprintf(Buffer,"%d",Value);
+	OLED_WriteS(Buffer);
 }
 
 

@@ -29,10 +29,13 @@ void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color);
 void OLED_Init(void);
 void OLED_GoToCollumn(uint8_t CollumnNumber);
 void OLED_ClearDisp(void);
-void OLED_WriteChar(char character);
+void OLED_WriteC(char character);
 void OLED_MoveCursor(uint8_t collumn, uint8_t page);
 void OLED_DrawLine1(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t color);
 void OLED_ChangeFont(const uint8_t *Font);
+void OLED_WriteS(char *String);
+void OLED_GetCursorPosition(CursorPosition *OutputPosition);
+void OLED_WriteI(int Value);
 
 
 
