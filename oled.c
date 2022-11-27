@@ -23,7 +23,7 @@ CursorPosition Cursor;
 //
 //Init commands table
 //
-const uint8_t InitCommands[] = {
+const uint8_t InitCommands[] PROGMEM = {
 	DISPLAY_OFF,
 	SET_COMM_SCAN_FBOT,
 	SET_COLLUMN_ADDR_L,
@@ -56,13 +56,17 @@ void OLED_SendCmd(uint8_t command)
 	I2C_stop();
 }
 
-void OLED_Send2ByteCmd(uint8_t command, uint8_t value)
+void OLED_SendCmdSequence(uint8_t *CommandSequence, uint8_t length)
 {
+	uint8_t i;
 	I2C_start();
 	I2C_write(OLED_ADDR);
 	I2C_write(SEND_COMMAND); //control byte
-	I2C_write(command);
-	I2C_write(value);
+	for(i = 0; i < length; i++)
+	{
+		I2C_write(*CommandSequence);
+		CommandSequence++;
+	}
 	I2C_stop();
 }
 
@@ -81,7 +85,7 @@ void OLED_SendData(uint8_t *Data, uint8_t length)
 	I2C_stop();
 
 }
-
+/*
 void OLED_Init()
 {
 	uint8_t i;
@@ -94,6 +98,20 @@ void OLED_Init()
 		I2C_write(InitCommands[i]);
 	}
 	I2C_stop();
+	OLED_ChangeFont(StandardASCII);
+}
+*/
+
+void OLED_Init()
+{
+	uint8_t i;
+	uint8_t CommandSize = sizeof(InitCommands);
+	uint8_t CommandBuffer[CommandSize];
+	for(i = 0; i < CommandSize; i++)
+	{
+		CommandBuffer[i] = pgm_read_byte(InitCommands + i);	//InitCommands - table name as incremented pointer
+	}
+	OLED_SendCmdSequence(CommandBuffer,CommandSize);
 	OLED_ChangeFont(StandardASCII);
 }
 
@@ -158,7 +176,7 @@ void OLED_WriteChar(char character)
 		uint8_t i;
 		uint8_t BytesToSend [MAX_FONT_WIDTH];
 		uint16_t CharTableNumber = (character - CurrentFont.FirstChar ) * CurrentFont.FontWidth;  //calculate character position in font table
-		uint8_t *CharPointer = (uint8_t*)(CurrentFont.FontPointer + 4) + CharTableNumber;         //Increase pointer to this data
+		const uint8_t *CharPointer = (CurrentFont.FontPointer + 4) + CharTableNumber;         //Increase pointer to this data
 
 		for(i = 0; i < CurrentFont.FontWidth; i++)                                                //copy character from flash to buffer
 		{
@@ -167,6 +185,10 @@ void OLED_WriteChar(char character)
 		}
 		OLED_SendData(BytesToSend,CurrentFont.FontWidth);                                         //print it
 		Cursor.collumn += CurrentFont.FontWidth;
+		if(Cursor.collumn + CurrentFont.FontWidth > 127)
+		{
+			OLED_MoveCursor(0,Cursor.page + 1);
+		}
 		break;
 	}
 }
