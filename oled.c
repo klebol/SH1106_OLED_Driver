@@ -37,7 +37,7 @@ const uint8_t InitCommands[] PROGMEM = {
 	SET_CONTRAST,0x3F,
 	SET_SEGMENT_REMAP,
 	SET_MULTIPLEX_RATIO, 63,
-	SET_OFFSET,1,
+	SET_OFFSET,0,
 	SET_VCOM,0x20,
 	SET_DCDC,0x8B,
 	DISPLAY_ON
@@ -141,6 +141,8 @@ void OLED_ClearDisp(void)
 	OLED_MoveCursor(0,0);
 }
 
+
+
 //
 //Functions for text writing - no buffer
 //
@@ -203,6 +205,43 @@ void OLED_WriteI(int Value)
 }
 
 
+void OLED_DrawBitmapFlash(uint8_t x, uint8_t page, const uint8_t *bitmap)
+{
+	uint8_t i,j, width, height;
+	const uint8_t *image_start;
+	uint8_t buffer[DISPLAY_WIDTH];
+	width = pgm_read_byte(bitmap);
+	height = pgm_read_byte(bitmap + 1);
+	image_start = bitmap + 2;
+
+
+	DEBUG_Sendi(width,"width");
+	DEBUG_Sendi(height,"height");
+
+	for(i = 0; i < (height/8); i++)
+	{
+
+
+		DEBUG_Sendi(i,"i");
+
+
+		for(j = 0; j < width; j++)
+		{
+			buffer[j] = pgm_read_byte(image_start + j);
+
+		}
+
+		OLED_MoveCursor(x, (page + i) );
+
+		DEBUG_Sendi(x,"x");
+		DEBUG_Sendi((page+i),"page+i");
+
+		OLED_SendData(buffer, width);
+		image_start += width;
+
+	}
+}
+
 void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color)
 {
 	x += COLLUMN_CENTER_OFFSET;
@@ -242,4 +281,12 @@ void OLED_DrawLine1(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t colo
         if (e2 < dx) { err += dx; y1 += sy; } /* e_xy+e_y < 0 */
     }
 
+}
+
+void DEBUG_Sendi(uint16_t variable, char *String)
+{
+	uart_sends(String);
+	uart_sends(": ");
+	uart_sendi(variable);
+	uart_sends("\r\n");
 }
