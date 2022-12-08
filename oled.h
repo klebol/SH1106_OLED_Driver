@@ -37,6 +37,7 @@ void OLED_WriteS(char *String);
 void OLED_GetCursorPosition(CursorPosition *OutputPosition);
 void OLED_WriteI(int Value);
 void OLED_DrawBitmapFlash(uint8_t x, uint8_t page, const uint8_t *bitmap);
+void OLED_DrawBitmapShift(uint8_t x, uint8_t y, const uint8_t *bitmap);
 
 
 void DEBUG_Sendi(uint16_t variable, char *String);
