@@ -56,7 +56,7 @@ void OLED_SendCmd(uint8_t command)
 	I2C_stop();
 }
 
-void OLED_SendCmdSequence(uint8_t *CommandSequence, uint8_t length)
+void OLED_SendCmdSequence(uint8_t *commandSequence, uint8_t length)
 {
 	uint8_t i;
 	I2C_start();
@@ -64,13 +64,13 @@ void OLED_SendCmdSequence(uint8_t *CommandSequence, uint8_t length)
 	I2C_write(SEND_COMMAND); //control byte
 	for(i = 0; i < length; i++)
 	{
-		I2C_write(*CommandSequence);
-		CommandSequence++;
+		I2C_write(*commandSequence);
+		commandSequence++;
 	}
 	I2C_stop();
 }
 
-void OLED_SendData(uint8_t *Data, uint8_t length)
+void OLED_SendData(uint8_t *data, uint8_t length)
 {
 	uint8_t i;
 	I2C_start();
@@ -79,8 +79,8 @@ void OLED_SendData(uint8_t *Data, uint8_t length)
 
 	for(i = 0; i < length; i++)
 	{
-		I2C_write(*Data);
-		Data++;
+		I2C_write(*data);
+		data++;
 	}
 	I2C_stop();
 
@@ -205,96 +205,42 @@ void OLED_WriteI(int Value)
 }
 
 
-void OLED_DrawBitmapFlash(uint8_t x, uint8_t page, const uint8_t *bitmap)
+uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 {
-	uint8_t i,j, width, height;
-	const uint8_t *image_start;
-	uint8_t buffer[DISPLAY_WIDTH];
-	width = pgm_read_byte(bitmap);               //read bitmap width
-	height = pgm_read_byte(bitmap + 1);          //read bitmap height
-	image_start = bitmap + 2;                    //pointer to data start
+	uint8_t Width = pgm_read_byte(bitmap);               //Read bitmap width
+	uint8_t Height = pgm_read_byte(bitmap + 1);          //Read bitmap height
+	if(Width > DISPLAY_WIDTH || Height > DISPLAY_HEIGHT) return 1;
+	if(x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return 1;
 
-	for(i = 0; i < (height/8); i++)              //data is sent by pages
-	{
 
-		for(j = 0; j < width; j++)               //copying current page's image data to ram
-		{
-			buffer[j] = pgm_read_byte(image_start + j);
-
-		}
-
-		OLED_MoveCursor(x, (page + i) );         //moving cursor to proper (next) page
-		OLED_SendData(buffer, width);            //sending one page data
-		image_start += width;                    //increasing pointer to data for next page
-
-	}
-}
-
-void OLED_DrawBitmapShift(uint8_t x, uint8_t y, const uint8_t *bitmap)	//do usprawnienia
-{
-	uint8_t i,j, width, height;
-	const uint8_t *image_start;
-	uint8_t buffer[DISPLAY_WIDTH];
-	width = pgm_read_byte(bitmap);               //read bitmap width
-	height = pgm_read_byte(bitmap + 1);          //read bitmap height
-	image_start = bitmap + 2;                    //pointer to data start
-
+	uint8_t BytesToDisplay[Width];
+	uint8_t ShiftedFromPrevious[Width];
+	uint8_t ShiftBuffer[Width];
+	memset(&ShiftBuffer, 0x00, sizeof(ShiftBuffer));
+	const uint8_t *ImageStart = bitmap + 2;
 
 	uint8_t Page = y / 8;
 	uint8_t BitShift = y % 8;					//value of bit shift
-	uint8_t ShiftBuffer[DISPLAY_WIDTH];
-	uint8_t ShiftBuffer2[DISPLAY_WIDTH];
-	memset(&ShiftBuffer, 0x00, sizeof(ShiftBuffer));
+	uint8_t i,j;
 
-
-
-
-
-
-
-	for(i = 0; i < (height/8) - Page; i++)              //data is sent by pages (protection for screen looping)
+	for(i = 0; i < (Height/8); i++)                              //Data is sent by pages to the bottom of the screen (no loop)
 	{
-
-		for(j = 0; j < width; j++)               //copying current page's image data to ram
+		for(j = 0; j < Width; j++)                                      //Copying current page's image data to ram
 		{
-			buffer[j] = pgm_read_byte(image_start + j);		//read oryginal
+			BytesToDisplay[j] = pgm_read_byte(ImageStart + j);          //Read oryginal
 
-
-			if( (i+3) % 2 )
-			{
-
-			ShiftBuffer2[j] = (buffer[j] >> (8 - BitShift));	//for next line
-
-			buffer[j] = (buffer[j] << BitShift);			//shift oryginal
-
-
-
-
-			buffer[j] = buffer[j] | ShiftBuffer[j];		//add previous
-
-			}
-			else
-			{
-			ShiftBuffer[j] = (buffer[j] >> (8 - BitShift));	//for next line
-
-			buffer[j] = (buffer[j] << BitShift);			//shift oryginal
-
-
-
-
-			buffer[j] = buffer[j] | ShiftBuffer2[j];		//add previous
-			}
-
-
+			if(BitShift == 0) continue;                                 //skip part below if there is no need for shifting image
+                                                                        /*Bit shifting part in case when y coordinate isnt page's 0 bit*/
+			ShiftedFromPrevious[j] = ShiftBuffer[j];                    //Save bits which were shifted out from previus byte (page) in order to add them to this byte
+			ShiftBuffer[j] = (BytesToDisplay[j] >> (8 - BitShift));	    //Save shifted out bits for next page
+			BytesToDisplay[j] <<= BitShift;                             //Shift original page's byte
+			BytesToDisplay[j] |= ShiftedFromPrevious[j];                //Add bits shifted out from prevous page's byte to current page's byte
 		}
-
-
-
-		OLED_MoveCursor(x, (Page + i) );         //moving cursor to proper (next) page
-		OLED_SendData(buffer, width);            //sending one page data
-		image_start += width;                    //increasing pointer to data for next page
-
+		OLED_MoveCursor(x, (Page + i) );                                //Move cursor to proper (next) page
+		OLED_SendData(BytesToDisplay, Width);                           //Send one page data
+		ImageStart += Width;                                            //Increase pointer to data for next page
 	}
+	return 0;
 }
 
 void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color)
