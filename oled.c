@@ -207,25 +207,30 @@ void OLED_WriteI(int Value)
 
 uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 {
-	uint8_t Width = pgm_read_byte(bitmap);               //Read bitmap width
-	uint8_t Height = pgm_read_byte(bitmap + 1);          //Read bitmap height
-	if(Width > DISPLAY_WIDTH || Height > DISPLAY_HEIGHT) return 1;
+	uint8_t Width = pgm_read_byte(bitmap);                             //Read bitmap's width
+	uint8_t Height = pgm_read_byte(bitmap + 1);                        //Read bitmap's height
+	uint8_t WidthToSend = Width;
+
+	if( (Width-(DISPLAY_WIDTH-x)) > 0 )                                //Check if bitmap was placed out of range of display
+	{
+		WidthToSend = Width-(Width-(DISPLAY_WIDTH-x));                 //If it was, limit width to send to only visible part
+	}                                                                  //This prevents from image looping at the screen beggining
+
 	if(x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return 1;
 
-
-	uint8_t BytesToDisplay[Width];
-	uint8_t ShiftedFromPrevious[Width];
-	uint8_t ShiftBuffer[Width];
+	uint8_t BytesToDisplay[WidthToSend];
+	uint8_t ShiftedFromPrevious[WidthToSend];
+	uint8_t ShiftBuffer[WidthToSend];
 	memset(&ShiftBuffer, 0x00, sizeof(ShiftBuffer));
 	const uint8_t *ImageStart = bitmap + 2;
 
 	uint8_t Page = y / 8;
-	uint8_t BitShift = y % 8;					//value of bit shift
+	uint8_t BitShift = y % 8;					                        //value of bit shift
 	uint8_t i,j;
 
-	for(i = 0; i < (Height/8); i++)                              //Data is sent by pages to the bottom of the screen (no loop)
+	for(i = 0; i < (Height/8); i++)                                     //Data is sent by pages to the bottom of the screen
 	{
-		for(j = 0; j < Width; j++)                                      //Copying current page's image data to ram
+		for(j = 0; j < WidthToSend; j++)                                //Copying current page's image data to ram
 		{
 			BytesToDisplay[j] = pgm_read_byte(ImageStart + j);          //Read oryginal
 
@@ -237,8 +242,9 @@ uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 			BytesToDisplay[j] |= ShiftedFromPrevious[j];                //Add bits shifted out from prevous page's byte to current page's byte
 		}
 		OLED_MoveCursor(x, (Page + i) );                                //Move cursor to proper (next) page
-		OLED_SendData(BytesToDisplay, Width);                           //Send one page data
+		OLED_SendData(BytesToDisplay, WidthToSend);                     //Send one page data
 		ImageStart += Width;                                            //Increase pointer to data for next page
+		if( (Page + i + 1) > (DISPLAY_HEIGHT/8) - 1) break;             //Prevent sending data out of display range (no screen looping)
 	}
 	return 0;
 }
