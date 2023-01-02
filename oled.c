@@ -17,6 +17,8 @@
 #include "UART/uart.h"
 
 
+//other goals : video ram buffer option (on/off), images between pages (on/off), big fonts support, shapes drawing
+
 //
 //Global variables
 //
@@ -24,7 +26,9 @@ static CursorPosition Cursor;
 static FontInfo CurrentFont;
 const uint8_t *ActualFont = StandardASCII;
 
-
+#ifdef USE_VRAM_BUFFER
+static uint8_t BufferVRAM[DISPLAY_WIDTH * (DISPLAY_HEIGHT/8)];
+#endif
 
 //
 //Init commands table
@@ -70,7 +74,7 @@ void OLED_SendCmdSequence(uint8_t *commandSequence, uint8_t length)
 	I2C_stop();
 }
 
-void OLED_SendData(uint8_t *data, uint8_t length)
+void OLED_SendData(uint8_t *data, uint16_t length)
 {
 	uint8_t i;
 	I2C_start();
@@ -113,18 +117,21 @@ void OLED_GoToCollumn(uint8_t CollumnNumber)
 	OLED_SendCmd(SET_COLLUMN_ADDR_H | (CollumnNumber >> 4) ); 				//Set higher column address	(4 higher bits + 0x10 identifier 0b0001xxxx)
 }
 
-void OLED_MoveCursor(uint8_t collumn, uint8_t page)
+void OLED_MoveCursor(uint8_t collumn, uint8_t line)
 {
+	uint8_t page = line/8;
 	OLED_GoToCollumn(collumn);
 	OLED_SendCmd(SET_PAGE | (page & 0x07) );		//0x07 mask to prevent numbers > 7
 	Cursor.collumn = collumn;
 	Cursor.page = page;
+	Cursor.line = line;
 }
 
 void OLED_GetCursorPosition(CursorPosition *OutputPosition)
 {
 	OutputPosition->collumn = Cursor.collumn;
 	OutputPosition->page = Cursor.page;
+	OutputPosition->line = Cursor.line;
 }
 
 void OLED_ClearDisp(void)
@@ -135,7 +142,7 @@ void OLED_ClearDisp(void)
 	memset(&ZerosBuff, 0x00, sizeof(ZerosBuff));		//prepare zeros for clearing each page
 	for(i = 0; i < DISPLAY_HEIGHT/8; i++)				//clear each page by sending zeros
 	{
-		OLED_MoveCursor(0,i);
+		OLED_MoveCursor(0,(i*8));
 		OLED_SendData(&ZerosBuff[0],sizeof(ZerosBuff));
 	}
 	OLED_MoveCursor(0,0);
@@ -160,11 +167,11 @@ void OLED_WriteC(char character)
 	switch(character)
 	{
 	case '\r':	//carriage return
-		OLED_MoveCursor(0, Cursor.page);
+		OLED_MoveCursor(0, Cursor.line);
 		break;
 
 	case '\n':	//linefeed, next line
-		OLED_MoveCursor(Cursor.collumn, Cursor.page + 1);
+		OLED_MoveCursor(Cursor.collumn, Cursor.line + 8);
 		break;
 
 	default: ;	//any other characters
@@ -180,9 +187,9 @@ void OLED_WriteC(char character)
 		}
 		OLED_SendData(BytesToSend,CurrentFont.FontWidth);                                         //print it
 		Cursor.collumn += CurrentFont.FontWidth;
-		if(Cursor.collumn + CurrentFont.FontWidth > 127)
+		if(Cursor.collumn + CurrentFont.FontWidth > DISPLAY_WIDTH - 1)
 		{
-			OLED_MoveCursor(0,Cursor.page + 1);
+			OLED_MoveCursor(0,Cursor.line + 8);
 		}
 		break;
 	}
@@ -204,7 +211,7 @@ void OLED_WriteI(int Value)
 	OLED_WriteS(Buffer);
 }
 
-
+//moze oddzielic czesc tej funkcji jako write_shifted data by moc tez pisac litery midzy pagesami??
 uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 {
 	uint8_t Width = pgm_read_byte(bitmap);                             //Read bitmap's width
@@ -219,20 +226,21 @@ uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 	if(x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return 1;
 
 	uint8_t BytesToDisplay[WidthToSend];
+	uint8_t BitShift = y % 8; //value of bit shift
+
 	uint8_t ShiftedFromPrevious[WidthToSend];
 	uint8_t ShiftBuffer[WidthToSend];
 	memset(&ShiftBuffer, 0x00, sizeof(ShiftBuffer));
 	const uint8_t *ImageStart = bitmap + 2;
 
-	uint8_t Page = y / 8;
-	uint8_t BitShift = y % 8;					                        //value of bit shift
 	uint8_t i,j;
-
 	for(i = 0; i < (Height/8); i++)                                     //Data is sent by pages to the bottom of the screen
 	{
 		for(j = 0; j < WidthToSend; j++)                                //Copying current page's image data to ram
 		{
 			BytesToDisplay[j] = pgm_read_byte(ImageStart + j);          //Read oryginal
+
+
 
 			if(BitShift == 0) continue;                                 //skip part below if there is no need for shifting image
                                                                         /*Bit shifting part in case when y coordinate isnt page's 0 bit*/
@@ -241,13 +249,16 @@ uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
 			BytesToDisplay[j] <<= BitShift;                             //Shift original page's byte
 			BytesToDisplay[j] |= ShiftedFromPrevious[j];                //Add bits shifted out from prevous page's byte to current page's byte
 		}
-		OLED_MoveCursor(x, (Page + i) );                                //Move cursor to proper (next) page
+		OLED_MoveCursor(x, (y + (i*8)) );                                //Move cursor to proper (next) page
 		OLED_SendData(BytesToDisplay, WidthToSend);                     //Send one page data
 		ImageStart += Width;                                            //Increase pointer to data for next page
-		if( (Page + i + 1) > (DISPLAY_HEIGHT/8) - 1) break;             //Prevent sending data out of display range (no screen looping)
+		if( ((y/8) + i + 1) > (DISPLAY_HEIGHT/8) - 1) break;             //Prevent sending data out of display range (no screen looping)
 	}
 	return 0;
 }
+
+
+
 
 void OLED_DrawPixel(uint8_t x, uint8_t y, uint8_t color)
 {
@@ -297,3 +308,76 @@ void DEBUG_Sendi(uint16_t variable, char *String)
 	uart_sendi(variable);
 	uart_sends("\r\n");
 }
+
+#ifdef USE_VRAM_BUFFER
+
+void OLED_UpdateVRAM(void)
+{
+	OLED_MoveCursor(0,0);
+	OLED_SendData(BufferVRAM,sizeof(BufferVRAM));
+}
+
+void OLED_WriteToBufferVRAM(uint8_t *data, uint16_t length)
+{
+	uint16_t FirstByte = (Cursor.page * DISPLAY_WIDTH) + Cursor.collumn;
+	uint8_t i;
+	for(i = 0; i < length; i++)
+	{
+		BufferVRAM[FirstByte + i] = *data;
+		data++;
+	}
+}
+
+void OLED_ClearFromBufferVRAM(uint8_t *data, uint16_t length)
+{
+
+}
+
+#endif
+
+/*
+uint8_t OLED_DrawBitmapFlash(uint8_t x, uint8_t y, const uint8_t *bitmap)
+{
+	uint8_t Width = pgm_read_byte(bitmap);                             //Read bitmap's width
+	uint8_t Height = pgm_read_byte(bitmap + 1);                        //Read bitmap's height
+	uint8_t WidthToSend = Width;
+
+	if( (Width-(DISPLAY_WIDTH-x)) > 0 )                                //Check if bitmap was placed out of range of display
+	{
+		WidthToSend = Width-(Width-(DISPLAY_WIDTH-x));                 //If it was, limit width to send to only visible part
+	}                                                                  //This prevents from image looping at the screen beggining
+
+	if(x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return 1;
+
+	uint8_t BytesToDisplay[WidthToSend];
+	uint8_t ShiftedFromPrevious[WidthToSend];
+	uint8_t ShiftBuffer[WidthToSend];
+	memset(&ShiftBuffer, 0x00, sizeof(ShiftBuffer));
+	const uint8_t *ImageStart = bitmap + 2;
+
+	uint8_t Page = y / 8;
+	uint8_t BitShift = y % 8;					                        //value of bit shift
+	uint8_t i,j;
+
+	for(i = 0; i < (Height/8); i++)                                     //Data is sent by pages to the bottom of the screen
+	{
+		for(j = 0; j < WidthToSend; j++)                                //Copying current page's image data to ram
+		{
+			BytesToDisplay[j] = pgm_read_byte(ImageStart + j);          //Read oryginal
+
+			if(BitShift == 0) continue;                                 //skip part below if there is no need for shifting image
+                                                                        //Bit shifting part in case when y coordinate isnt page's 0 bit
+			ShiftedFromPrevious[j] = ShiftBuffer[j];                    //Save bits which were shifted out from previus byte (page) in order to add them to this byte
+			ShiftBuffer[j] = (BytesToDisplay[j] >> (8 - BitShift));	    //Save shifted out bits for next page
+			BytesToDisplay[j] <<= BitShift;                             //Shift original page's byte
+			BytesToDisplay[j] |= ShiftedFromPrevious[j];                //Add bits shifted out from prevous page's byte to current page's byte
+		}
+		OLED_MoveCursor(x, (Page + i) );                                //Move cursor to proper (next) page
+		OLED_SendData(BytesToDisplay, WidthToSend);                     //Send one page data
+		ImageStart += Width;                                            //Increase pointer to data for next page
+		if( (Page + i + 1) > (DISPLAY_HEIGHT/8) - 1) break;             //Prevent sending data out of display range (no screen looping)
+	}
+	return 0;
+}
+
+*/

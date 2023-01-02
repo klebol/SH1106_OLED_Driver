@@ -8,7 +8,7 @@
 #ifndef OLED_DEFS_H_
 #define OLED_DEFS_H_
 
-#define OLED_ADDR           (0x3C << 1) //Without bit - shift 0x1E addres was being sent (idk why)
+#define USE_VRAM_BUFFER 0
 
 
 #define DISPLAY_WIDTH        128
@@ -19,6 +19,7 @@
 #elif DISPLAY_WIDTH == 132
 #define COLLUMN_CENTER_OFFSET 0
 #endif
+
 
 //
 //CONTROL BYTES
@@ -31,6 +32,8 @@
 //
 //OLED COMMANDS
 //
+#define OLED_ADDR           (0x3C << 1) //Without bit - shift 0x1E addres was being sent (idk why)
+
 
 #define DISPLAY_ON          0xAF		//--Display state--
 #define DISPLAY_OFF         0xAE		//0xAF - ON, 0xAE - OFF(Sleep mode)

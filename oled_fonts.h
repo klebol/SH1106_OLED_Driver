@@ -1,5 +1,6 @@
 #ifndef OLED_FONTS_H_
 #define OLED_FONTS_H_
+
 #include <avr/pgmspace.h>
 
 #define MAX_FONT_WIDTH	6
